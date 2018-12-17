@@ -77,6 +77,8 @@ export default class GooglePlacesAutocomplete extends Component {
   _isMounted = false;
   _results = [];
   _requests = [];
+  
+    
 
   constructor (props) {
     super(props);
@@ -96,6 +98,7 @@ export default class GooglePlacesAutocomplete extends Component {
   buildRowsFromResults = (results) => {
     let res = [];
 
+    // this._isMounted && this._onFocus();
     if (results.length === 0 || this.props.predefinedPlacesAlwaysVisible === true) {
       res = [...this.props.predefinedPlaces];
 
@@ -111,6 +114,7 @@ export default class GooglePlacesAutocomplete extends Component {
       ...place,
       isPredefinedPlace: true
     }));
+    console.log(res, results)
 
     return [...res, ...results];
   }
@@ -129,6 +133,7 @@ export default class GooglePlacesAutocomplete extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
+    console.log(this.state, nextProps)
     let listViewDisplayed = true;
 
     if (nextProps.listViewDisplayed !== 'auto') {
@@ -141,9 +146,10 @@ export default class GooglePlacesAutocomplete extends Component {
         },
         this._handleChangeText(nextProps.text));
     } else {
-      this.setState({
-        listViewDisplayed: listViewDisplayed
-      });
+      console.log("change listviewdisplay to true")
+      // this.setState({
+      //   listViewDisplayed: listViewDisplayed
+      // });
     }
   }
 
@@ -189,7 +195,7 @@ export default class GooglePlacesAutocomplete extends Component {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        if (this.props.nearbyPlacesAPI === 'None') {
+        if (this.props.currentLocationPlace === false) {
           let currentLocation = {
             description: this.props.currentLocationLabel,
             geometry: {
@@ -274,7 +280,7 @@ export default class GooglePlacesAutocomplete extends Component {
               'google places autocomplete: request could not be completed or has been aborted'
             );
           } else {
-            this.props.onFail('request could not be completed or has been aborted');
+            this.props.onFail();
           }
         }
       };
@@ -360,14 +366,24 @@ export default class GooglePlacesAutocomplete extends Component {
   _filterResultsByTypes = (unfilteredResults, types) => {
     if (types.length === 0) return unfilteredResults;
 
+    console.log(unfilteredResults)
     const results = [];
     for (let i = 0; i < unfilteredResults.length; i++) {
       let found = false;
 
-      for (let j = 0; j < types.length; j++) {
-        if (unfilteredResults[i].types.indexOf(types[j]) !== -1) {
-          found = true;
-          break;
+      if (unfilteredResults[i].hasOwnProperty('geometry') && unfilteredResults[i].geometry.location_type === 'RANGE_INTERPOLATED') {
+        for (let j = 0; j < types.length; j++) {
+          if (unfilteredResults[i].types.indexOf(types[j]) !== -1) {
+            found = true;
+            break;
+          }
+        }
+      } else if (!unfilteredResults[i].hasOwnProperty('geometry')) {
+        for (let j = 0; j < types.length; j++) {
+          if (unfilteredResults[i].types.indexOf(types[j]) !== -1) {
+            found = true;
+            break;
+          }
         }
       }
 
@@ -375,6 +391,7 @@ export default class GooglePlacesAutocomplete extends Component {
         results.push(unfilteredResults[i]);
       }
     }
+
     return results;
   }
 
@@ -393,7 +410,8 @@ export default class GooglePlacesAutocomplete extends Component {
 
         if (request.status === 200) {
           const responseJSON = JSON.parse(request.responseText);
-
+          
+          console.log(request.responseText)
           this._disableRowLoaders();
 
           if (typeof responseJSON.results !== 'undefined') {
@@ -404,18 +422,15 @@ export default class GooglePlacesAutocomplete extends Component {
               } else {
                 results = responseJSON.results;
               }
-
+              
+              // this.props.onPress(results[0])
               this.setState({
                 dataSource: this.buildRowsFromResults(results),
               });
             }
           }
           if (typeof responseJSON.error_message !== 'undefined') {
-              if(!this.props.onFail)
-                console.warn('google places autocomplete: ' + responseJSON.error_message);
-              else{
-                this.props.onFail(responseJSON.error_message)
-              }
+            console.warn('google places autocomplete: ' + responseJSON.error_message);
           }
         } else {
           // console.warn("google places autocomplete: request could not be completed or has been aborted");
@@ -437,6 +452,8 @@ export default class GooglePlacesAutocomplete extends Component {
           ...this.props.GooglePlacesSearchQuery,
         });
       }
+
+      console.log(url)
 
       request.open('GET', url);
       if (this.props.query.origin !== null) {
@@ -479,11 +496,7 @@ export default class GooglePlacesAutocomplete extends Component {
             }
           }
           if (typeof responseJSON.error_message !== 'undefined') {
-            if(!this.props.onFail)
-              console.warn('google places autocomplete: ' + responseJSON.error_message);
-            else{
-              this.props.onFail(responseJSON.error_message)
-            }
+            console.warn('google places autocomplete: ' + responseJSON.error_message);
           }
         } else {
           // console.warn("google places autocomplete: request could not be completed or has been aborted");
@@ -504,7 +517,7 @@ export default class GooglePlacesAutocomplete extends Component {
   }
 
   _onChangeText = (text) => {
-    this._request(text);
+    text.length < 1 ? this.getCurrentLocation() : this._request(text);
 
     this.setState({
       text: text,
@@ -662,7 +675,6 @@ export default class GooglePlacesAutocomplete extends Component {
     const keyGenerator = () => (
       Math.random().toString(36).substr(2, 10)
     );
-
     if ((this.state.text !== '' || this.props.predefinedPlaces.length || this.props.currentLocation === true) && this.state.listViewDisplayed === true) {
       return (
         <FlatList
@@ -683,7 +695,7 @@ export default class GooglePlacesAutocomplete extends Component {
   render() {
     let {
       onFocus,
-      clearButtonMode,
+      onBlur,
       ...userProps
     } = this.props.textInputProps;
     return (
@@ -707,11 +719,9 @@ export default class GooglePlacesAutocomplete extends Component {
               onSubmitEditing={this.props.onSubmitEditing}
               placeholderTextColor={this.props.placeholderTextColor}
               onFocus={onFocus ? () => {this._onFocus(); onFocus()} : this._onFocus}
-              onBlur={this._onBlur}
+              onBlur={onBlur ? () => {this._onBlur(); onBlur()} : this._onBlur}
+              clearButtonMode="while-editing"
               underlineColorAndroid={this.props.underlineColorAndroid}
-              clearButtonMode={
-                clearButtonMode ? clearButtonMode : "while-editing"
-              }
               { ...userProps }
               onChangeText={this._handleChangeText}
             />
@@ -750,6 +760,7 @@ GooglePlacesAutocomplete.propTypes = {
   currentLocation: PropTypes.bool,
   currentLocationLabel: PropTypes.string,
   nearbyPlacesAPI: PropTypes.string,
+  currentLocationPlace: PropTypes.bool,
   enableHighAccuracyLocation: PropTypes.bool,
   filterReverseGeocodingByTypes: PropTypes.array,
   predefinedPlacesAlwaysVisible: PropTypes.bool,
@@ -802,6 +813,7 @@ GooglePlacesAutocomplete.defaultProps = {
   currentLocation: false,
   currentLocationLabel: 'Current location',
   nearbyPlacesAPI: 'GooglePlacesSearch',
+  currentLocationPlace: false,
   enableHighAccuracyLocation: true,
   filterReverseGeocodingByTypes: [],
   predefinedPlacesAlwaysVisible: false,
